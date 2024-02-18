@@ -45,7 +45,14 @@ namespace Completed
 			
 			//Call the Start function of the MovingObject base class.
 			base.Start ();
-		}
+
+            if (GameManager.instance.IsAlreadySetPlayer())
+			{
+				Vector2Int pos = GameManager.instance.GetPlayerPos();
+                Debug.Log("[Test] Set Player Pos PlayerSide" + pos.ToString());
+                SetPos(new Vector3(pos.x, pos.y, 0f));
+			}
+        }
 		
 		
 		//This function is called when the behaviour becomes disabled or inactive.

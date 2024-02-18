@@ -6,13 +6,10 @@ using Random = UnityEngine.Random;
 using Unity.VisualScripting; 		//Tells Random to use the Unity Engine random number generator.
 
 namespace Completed
-	
 {
 	
 	public class BoardManager : MonoBehaviour
 	{
-		// Using Serializable allows us to embed a class with sub properties in the inspector.
-		[Serializable]
 		public class Count
 		{
 			public int minimum; 			//Minimum value for our Count class.
@@ -78,35 +75,39 @@ namespace Completed
 		 * 定義移植．
 		 */
         private const int MINIMUM_RANGE_WIDTH = 6;
+        private const int MINIMUM_ENEMY_NUM = 3;
 
-        private int mapSizeX = 16;
-        private int mapSizeY = 16;
-        private int maxRoom = 5;
+        private int mapSizeX = 30;
+        private int mapSizeY = 30;
+        private int maxRoom = 6;
 
         private List<Range> roomList = new List<Range>();
         private List<Range> rangeList = new List<Range>();
         private List<Range> passList = new List<Range>();
         private List<Range> roomPassList = new List<Range>();
 
-        private bool isGenerated = false;
         private bool shouldInitializePlayer = true;                                           //Prefab to player.
-        private bool shouldInitializeExit = true;                                           //Prefab to player.
         [SerializeField] private Player player;
+        private DebugFunc debug;
+		private Transform boardHolder;									//A variable to store a reference to the transform of our Board object.
+        
+        public Vector2Int PlayerPos;
+        public Count wallCount = new Count (5, 9);						//Lower and upper limit for our random number of walls per level.
+		public Count foodCount = new Count (1, 3);                      //Lower and upper limit for our random number of food items per level.
+		public GameObject exit;											//Prefab to spawn for exit.
         /**
 		 * ここまで.
 		 */
 
-        public Count wallCount = new Count (5, 9);						//Lower and upper limit for our random number of walls per level.
-		public Count foodCount = new Count (1, 5);                      //Lower and upper limit for our random number of food items per level.
-		public GameObject exit;											//Prefab to spawn for exit.
+        
+        
         public GameObject[] floorTiles;									//Array of floor prefabs.
 		public GameObject[] wallTiles;									//Array of wall prefabs.
 		public GameObject[] foodTiles;									//Array of food prefabs.
 		public GameObject[] enemyTiles;									//Array of enemy prefabs.
 		public GameObject[] outerWallTiles;								//Array of outer tile prefabs.
-		
-		private Transform boardHolder;									//A variable to store a reference to the transform of our Board object.
 		private List <Vector3> gridPositions = new List <Vector3> ();	//A list of possible locations to place tiles.
+		
 		
 		
 		//Clears our list gridPositions and prepares it to generate a new board.
@@ -130,6 +131,12 @@ namespace Completed
         // ゲーム開始時にだけやる処理.
         void Initialize(int level)
         {
+            shouldInitializePlayer = true;
+            roomList.Clear();
+            rangeList.Clear();
+            passList.Clear();
+            roomPassList.Clear();
+
             // 2階以降は削除を行う.
             // すべての子オブジェクトを取得
             if (GameObject.Find("Board") != null)
@@ -171,19 +178,18 @@ namespace Completed
 
         }
 		
-		
-		//RandomPosition returns a random position from our list gridPositions.
-		Vector3 RandomPosition ()
+        // 範囲からランダムな位置に任意のタイルを置く.		
+		Vector2Int RandomPosition (Range range)
 		{
 			//Declare an integer randomIndex, set it's value to a random number between 0 and the count of items in our List gridPositions.
 			int randomIndex = Random.Range (0, gridPositions.Count);
-			
-			//Declare a variable of type Vector3 called randomPosition, set it's value to the entry at randomIndex from our List gridPositions.
-			Vector3 randomPosition = gridPositions[randomIndex];
-			
-			//Remove the entry at randomIndex from the list so that it can't be re-used.
-			gridPositions.RemoveAt (randomIndex);
-			
+
+            //Declare a variable of type Vector3 called randomPosition, set it's value to the entry at randomIndex from our List gridPositions.
+            int randomX = Random.Range(range.Start.x, range.End.x);
+            int randomY = Random.Range(range.Start.y, range.End.y);
+
+            Vector2Int randomPosition = new Vector2Int(randomX, randomY);
+
 			//Return the randomly selected Vector3 position.
 			return randomPosition;
 		}
@@ -200,23 +206,22 @@ namespace Completed
 
 
         //LayoutObjectAtRandom accepts an array of game objects to choose from along with a minimum and maximum range for the number of objects to create.
-        void LayoutObjectAtRandom (GameObject[] tileArray, int minimum, int maximum)
+        void LayoutObjectAtRandom (int[,] map, E_TILE_TYPE type, Range range, int minimum, int maximum)
 		{
 			//Choose a random number of objects to instantiate within the minimum and maximum limits
-			int objectCount = Random.Range (minimum, maximum+1);
+			int objectCount = Random.Range (minimum, maximum);
 			
 			//Instantiate objects until the randomly chosen limit objectCount is reached
 			for(int i = 0; i < objectCount; i++)
 			{
 				//Choose a position for randomPosition by getting a random position from our list of available Vector3s stored in gridPosition
-				Vector3 randomPosition = RandomPosition();
-				
-				//Choose a random tile from tileArray and assign it to tileChoice
-				GameObject tileChoice = tileArray[Random.Range (0, tileArray.Length)];
-				
-				//Instantiate tileChoice at the position returned by RandomPosition with no change in rotation
-				Instantiate(tileChoice, randomPosition, Quaternion.identity);
-			}
+				Vector2Int randomPosition = RandomPosition(range);
+                if(type == E_TILE_TYPE.E_TYLE_EXIT)
+                {
+                    Debug.Log("Exit:" + randomPosition.ToString());
+                }
+                map[(int)randomPosition.x, (int)randomPosition.y] = (int)type;
+            }
 		}
 		
 		
@@ -225,6 +230,8 @@ namespace Completed
 		{
             // 初期化.
             Initialize(level);
+
+            this.debug = new DebugFunc();
 
             ////Reset our list of gridpositions.
             //InitialiseList ();
@@ -236,7 +243,7 @@ namespace Completed
             //LayoutObjectAtRandom (foodTiles, foodCount.minimum, foodCount.maximum);
 
             // レベルに応じた敵数.
-            int enemyCount = (int)Mathf.Log(level, 2f);
+            int enemyCount = (int)Mathf.Log(level + MINIMUM_ENEMY_NUM, 2f);
 
             //Instantiate a random number of enemies based on minimum and maximum, at randomized positions.
             //LayoutObjectAtRandom (enemyTiles, enemyCount, enemyCount);
@@ -245,7 +252,10 @@ namespace Completed
             //Instantiate (exit, new Vector3 (this.mapSizeX - 1, this.mapSizeY - 1, 0f), Quaternion.identity);
 
             // マップを敷く.
-            PutMap(GenerateMap(this.maxRoom, enemyCount));
+            int[,] map = GenerateMap(this.maxRoom, enemyCount);
+            Debug.Log("PutMap level" + level.ToString());
+            debug.PrintMap(map, this.mapSizeX, this.mapSizeY);
+            PutMap(map);
         }
 
         // マップを敷く.
@@ -271,7 +281,6 @@ namespace Completed
                 case E_TILE_TYPE.E_TYLE_FLOOR:
                     return floorTiles[MathUtils.GetRandomInt(0, floorTiles.Length - 1)];
                 case E_TILE_TYPE.E_TYLE_WALL:
-                    Debug.Log("[Test] Outer 1");
                     return outerWallTiles[MathUtils.GetRandomInt(0, outerWallTiles.Length - 1)];
                 case E_TILE_TYPE.E_TYLE_BREAKAQBLE_WALL:
                     return wallTiles[MathUtils.GetRandomInt(0, wallTiles.Length - 1)];
@@ -283,7 +292,6 @@ namespace Completed
                 case E_TILE_TYPE.E_TYLE_EXIT:
                     return exit;
                 default:
-                    Debug.Log("[Test] Outer 2");
                     return outerWallTiles[MathUtils.GetRandomInt(0, outerWallTiles.Length - 1)];
             }
         }
@@ -321,57 +329,43 @@ namespace Completed
             }
             // 部屋.
             int enemyCount = enemyNum;
-            bool isPopPlayer = false;
             Range playerRoom = RandomRoom();
-            bool isPopExit = false;
             Range exitRoom = RandomRoom();
             foreach (Range room in roomList)
             {
-                // プレイヤーPOP判定.
-                if(playerRoom.Equals(room))
+                // プレイヤー.
+                if (playerRoom.Equals(room))
                 {
-                    isPopPlayer = true;
+                    Vector2Int randomPosition = RandomPosition(room);
+                    if (player != null)
+                    {
+                        player.SetPos(new Vector3(randomPosition.x, randomPosition.y, 0f));
+                    }
+                    PlayerPos = new Vector2Int(randomPosition.x, randomPosition.y);
+                    shouldInitializePlayer = false;
                 }
-                // 出口POP判定.
+
+                // 出口.
                 if (exitRoom.Equals(room))
                 {
-                    isPopExit = true;
+                    LayoutObjectAtRandom(map, E_TILE_TYPE.E_TYLE_EXIT, room, 1, 1);
                 }
+
+                // 回復アイテム.
+                LayoutObjectAtRandom(map, E_TILE_TYPE.E_TYLE_FOOD, room, foodCount.minimum, foodCount.maximum + 1);
+
+                // 敵
+                LayoutObjectAtRandom(map, E_TILE_TYPE.E_TYLE_ENEMY, room, 0, enemyNum);
+
                 for (int x = room.Start.x; x <= room.End.x; x++)
                 {
                     for (int y = room.Start.y; y <= room.End.y; y++)
                     {
-                        // 飲み物
-                        if (MathUtils.RandomJadge(0.2f))
+                        // 何も入っていなければ床を置く.
+                        if(map[x, y] == (int)E_TILE_TYPE.E_NONE)
                         {
-                            // 20%でdrinkをおく
-                            map[x, y] = (int)E_TILE_TYPE.E_TYLE_DRINK;
-                            continue;
-                        }
-                        // 敵.
-                        if (MathUtils.RandomJadge(0.1f) && enemyCount > 0)
-                        {
-                            // 10%で敵をおく
-                            map[x, y] = (int)E_TILE_TYPE.E_TYLE_ENEMY;
-                            enemyCount--;
-                            continue;
-                        }
-                        // プレイヤーの場所初期化.
-                        if (shouldInitializePlayer && isPopPlayer && MathUtils.RandomJadge(0.4f))
-                        {
-                            player.SetPos(new Vector3(x, y, 0f));
-                            shouldInitializePlayer = false;
                             map[x, y] = (int)E_TILE_TYPE.E_TYLE_FLOOR;
-                            continue;
                         }
-                        // 出口の場所初期化.
-                        if (shouldInitializeExit && isPopExit && MathUtils.RandomJadge(0.4f))
-                        {
-                            map[x, y] = (int)E_TILE_TYPE.E_TYLE_EXIT;
-                            shouldInitializeExit = false;
-                            continue;
-                        }
-                        map[x, y] = (int)E_TILE_TYPE.E_TYLE_FLOOR;
                     }
                 }
             }
@@ -688,6 +682,10 @@ namespace Completed
                     }
                 }
             }
+        }
+        public bool IsAlreadySetPlayer()
+        {
+            return !this.shouldInitializePlayer;
         }
     }
 
